@@ -25,19 +25,26 @@ end
 
 function BicycleDynamics(plant::Bicycle, x::Vec5, u::Vec2)
     # of the traction wheel
-    turning_radius = plant.wheelbase / tan(x[3])
+    turning_radius = plant.wheelbase / tan(x[4])
     translational_velocity = x[5]
     angular_velocity = x[5] / turning_radius
     return Vec5(cos(x[3]), sin(x[3]), angular_velocity, u[1], u[2])
 end
 
 function Simulate(plant::Bicycle, init::Vec5, control_sequence::T) where {T <: AbstractArray{Vec2, 1}}
+    control_step = 1
     function integration_function(u,p,t)
-        control_step = clamp(trunc(Int, t / plant.control_cycle) + 1, 1, length(control_sequence))
         return BicycleDynamics(plant, u, control_sequence[control_step])
     end
-    problem = ODEProblem(integration_function, init, (0.0, plant.control_cycle * length(control_sequence)))
-    return solve(problem, Tsit5())
+    out = Array{Vec5, 1}(undef, length(control_sequence) + 1)
+    out[1] = init
+    problem = ODEProblem(integration_function, init, (0.0, plant.control_cycle))
+    for u in control_sequence
+      problem = remake(problem; u0=out[control_step])
+      out[control_step + 1] = solve(problem, Tsit5())[end]
+      control_step += 1
+    end
+    return out 
 end
 
 function BoxFromExtents(min::SVector{S,T}, max::SVector{S,T}) where {S, T}
@@ -62,4 +69,6 @@ bike = MakeBike()
 init = Vec5(0, 0, 0, 0, 0)
 control_sequence = Vec2[]
 push!(control_sequence, Vec2(1, 1))
+push!(control_sequence, Vec2(1, 1))
+push!(control_sequence, Vec2(0, 1))
 Simulate(bike, init, control_sequence)
